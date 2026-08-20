@@ -957,6 +957,7 @@ fn decode_audio_simple(audio_data: &[u8]) -> Result<Vec<f32>> {
         .codec_params
         .sample_rate
         .context("No sample rate in audio track")?;
+    checked_resampled_sample_count(0, sample_rate, 16_000)?;
 
     let channels = if let Some(ch) = track.codec_params.channels {
         ch.count()
@@ -976,7 +977,7 @@ fn decode_audio_simple(audio_data: &[u8]) -> Result<Vec<f32>> {
         .make(&track.codec_params, &DecoderOptions::default())
         .context("Failed to create audio decoder - please ensure browser sends WAV format audio")?;
 
-    let mut pcm_data = Vec::new();
+    let mut mono_data = Vec::new();
     let mut packet_count = 0;
 
     loop {
@@ -992,7 +993,9 @@ fn decode_audio_simple(audio_data: &[u8]) -> Result<Vec<f32>> {
 
         match decoder.decode(&packet) {
             Ok(decoded) => {
-                pcm_data.extend(audio_buffer_to_f32(&decoded));
+                checked_decoded_sample_count(mono_data.len(), decoded.frames(), sample_rate)?;
+                mono_data.try_reserve(decoded.frames())?;
+                append_audio_buffer_as_mono(&decoded, &mut mono_data);
                 packet_count += 1;
             }
             Err(symphonia::core::errors::Error::DecodeError(_)) => {
@@ -1004,18 +1007,9 @@ fn decode_audio_simple(audio_data: &[u8]) -> Result<Vec<f32>> {
 
     tracing::debug!(
         packet_count,
-        pcm_samples = pcm_data.len(),
+        mono_samples = mono_data.len(),
         "decoded audio packets"
     );
-
-    let mono_data = if channels > 1 {
-        tracing::debug!(channels, "converting to mono");
-        convert_to_mono(&pcm_data, channels)
-    } else {
-        pcm_data
-    };
-
-    checked_resampled_sample_count(mono_data.len(), sample_rate, 16_000)?;
 
     let resampled = if sample_rate != 16000 {
         tracing::debug!(from_rate = sample_rate, to_rate = 16000, "resampling audio");
@@ -1045,65 +1039,52 @@ fn decode_audio_simple(audio_data: &[u8]) -> Result<Vec<f32>> {
     Ok(resampled)
 }
 
-fn audio_buffer_to_f32(buffer: &AudioBufferRef) -> Vec<f32> {
+fn append_audio_buffer_as_mono(buffer: &AudioBufferRef, samples: &mut Vec<f32>) {
     let num_channels = buffer.spec().channels.count();
     let num_frames = buffer.frames();
-    let mut samples = Vec::with_capacity(num_frames * num_channels);
+    let channel_scale = 1.0 / num_channels as f32;
 
     match buffer {
         AudioBufferRef::F32(buf) => {
             for frame_idx in 0..num_frames {
+                let mut sum = 0.0;
                 for ch_idx in 0..num_channels {
-                    samples.push(buf.chan(ch_idx)[frame_idx]);
+                    sum += buf.chan(ch_idx)[frame_idx];
                 }
+                samples.push(sum * channel_scale);
             }
         }
         AudioBufferRef::S16(buf) => {
             for frame_idx in 0..num_frames {
+                let mut sum = 0.0;
                 for ch_idx in 0..num_channels {
-                    samples.push(buf.chan(ch_idx)[frame_idx] as f32 / 32768.0);
+                    sum += buf.chan(ch_idx)[frame_idx] as f32 / 32768.0;
                 }
+                samples.push(sum * channel_scale);
             }
         }
         AudioBufferRef::S32(buf) => {
             for frame_idx in 0..num_frames {
+                let mut sum = 0.0;
                 for ch_idx in 0..num_channels {
-                    samples.push(buf.chan(ch_idx)[frame_idx] as f32 / 2147483648.0);
+                    sum += buf.chan(ch_idx)[frame_idx] as f32 / 2147483648.0;
                 }
+                samples.push(sum * channel_scale);
             }
         }
         AudioBufferRef::F64(buf) => {
             for frame_idx in 0..num_frames {
+                let mut sum = 0.0;
                 for ch_idx in 0..num_channels {
-                    samples.push(buf.chan(ch_idx)[frame_idx] as f32);
+                    sum += buf.chan(ch_idx)[frame_idx] as f32;
                 }
+                samples.push(sum * channel_scale);
             }
         }
         _ => {
             tracing::warn!("Unsupported audio buffer format, returning silence");
         }
     }
-
-    samples
-}
-
-fn convert_to_mono(data: &[f32], channels: usize) -> Vec<f32> {
-    if channels == 1 {
-        return data.to_vec();
-    }
-
-    let frames = data.len() / channels;
-    let mut mono = Vec::with_capacity(frames);
-
-    for frame_idx in 0..frames {
-        let mut sum = 0.0;
-        for ch in 0..channels {
-            sum += data[frame_idx * channels + ch];
-        }
-        mono.push(sum / channels as f32);
-    }
-
-    mono
 }
 
 fn resample_audio(data: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
@@ -1183,10 +1164,29 @@ fn checked_resampled_sample_count(
     Ok(output_samples)
 }
 
+fn checked_decoded_sample_count(
+    current_samples: usize,
+    decoded_frames: usize,
+    sample_rate: u32,
+) -> Result<usize> {
+    let decoded_samples = current_samples
+        .checked_add(decoded_frames)
+        .ok_or_else(|| anyhow::anyhow!("Decoded audio size overflow"))?;
+
+    anyhow::ensure!(
+        decoded_samples <= MAX_WHISPER_AUDIO_SAMPLES,
+        "Decoded audio would contain {decoded_samples} samples; maximum is {MAX_WHISPER_AUDIO_SAMPLES}"
+    );
+    checked_resampled_sample_count(decoded_samples, sample_rate, 16_000)?;
+
+    Ok(decoded_samples)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use symphonia::core::audio::{AsAudioBufferRef, AudioBuffer, Channels, SignalSpec};
     use test_case::test_case;
 
     const TS: u32 = 50364; // A timestamp token for tests
@@ -1337,15 +1337,41 @@ mod tests {
     }
 
     #[test]
-    fn native_whisper_rate_enforces_resampled_sample_budget() {
+    fn decoded_audio_budget_enforces_native_whisper_rate() {
         assert_eq!(
-            checked_resampled_sample_count(MAX_WHISPER_AUDIO_SAMPLES, 16_000, 16_000).unwrap(),
+            checked_decoded_sample_count(MAX_WHISPER_AUDIO_SAMPLES - 1, 1, 16_000).unwrap(),
             MAX_WHISPER_AUDIO_SAMPLES
         );
 
-        let error = checked_resampled_sample_count(MAX_WHISPER_AUDIO_SAMPLES + 1, 16_000, 16_000)
-            .unwrap_err();
+        let error =
+            checked_decoded_sample_count(MAX_WHISPER_AUDIO_SAMPLES - 1, 2, 16_000).unwrap_err();
         assert!(error.to_string().contains("maximum"));
+    }
+
+    #[test]
+    fn decoded_audio_budget_caps_high_rate_pcm() {
+        let error = checked_decoded_sample_count(MAX_WHISPER_AUDIO_SAMPLES, 1, 96_000).unwrap_err();
+
+        assert!(error.to_string().contains("maximum"));
+    }
+
+    #[test]
+    fn decoded_stereo_frames_are_appended_as_mono() {
+        let spec = SignalSpec::new(16_000, Channels::FRONT_LEFT | Channels::FRONT_RIGHT);
+        let mut buffer = AudioBuffer::<f32>::new(2, spec);
+        buffer
+            .render(Some(2), |planes, frame| {
+                let planes = planes.planes();
+                planes[0][frame] = if frame == 0 { 1.0 } else { -1.0 };
+                planes[1][frame] = if frame == 0 { 3.0 } else { 1.0 };
+                Ok(())
+            })
+            .unwrap();
+        let mut samples = vec![4.0];
+
+        append_audio_buffer_as_mono(&buffer.as_audio_buffer_ref(), &mut samples);
+
+        assert_eq!(samples, vec![4.0, 2.0, 0.0]);
     }
 
     #[test]
