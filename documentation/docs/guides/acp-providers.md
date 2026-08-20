@@ -319,6 +319,15 @@ See [codex-acp](https://github.com/agentclientprotocol/codex-acp) for session mo
 
 Hermes ACP reports available models dynamically from the providers you have authenticated in Hermes. Keep `current` to use Hermes' default, or select a discovered model explicitly.
 
+**Permission Modes (`GOOSE_MODE`):**
+
+| goose mode      | Hermes ACP mode | Behavior                                                              |
+|-----------------|-----------------|-----------------------------------------------------------------------|
+| `auto`          | `dont_ask`      | Auto-allows file edits for this session except sensitive paths        |
+| `smart-approve` | `accept_edits`  | Auto-allows workspace and `/tmp` edits; still asks for sensitive paths |
+| `approve`       | `default`       | Asks before edits                                                     |
+| `chat`          | `default`       | Hermes has no plan mode; fail closed to ask-before-edits              |
+
 goose does not install Hermes and does not modify `~/.hermes`.
 
 ### Pi ACP Configuration

@@ -20,6 +20,10 @@ const HERMES_ACP_DOC_URL: &str =
 pub(crate) const HERMES_ACP_BINARY: &str = "hermes-acp";
 pub(crate) const HERMES_BINARY: &str = "hermes";
 
+const HERMES_MODE_DEFAULT: &str = "default";
+const HERMES_MODE_ACCEPT_EDITS: &str = "accept_edits";
+const HERMES_MODE_DONT_ASK: &str = "dont_ask";
+
 #[derive(Debug)]
 pub(crate) struct HermesAcpLaunch {
     pub command: PathBuf,
@@ -57,6 +61,21 @@ impl goose_providers::base::ProviderDescriptor for HermesAcpProvider {
 
 pub(crate) fn resolve_hermes_acp_launch() -> Result<HermesAcpLaunch> {
     resolve_hermes_acp_launch_with(|name| SearchPaths::builder().resolve(name))
+}
+
+fn hermes_mode_mapping() -> HashMap<GooseMode, Vec<String>> {
+    HashMap::from([
+        // Closest advertised autonomous mode; still guards sensitive paths.
+        (GooseMode::Auto, vec![HERMES_MODE_DONT_ASK.to_string()]),
+        (GooseMode::Approve, vec![HERMES_MODE_DEFAULT.to_string()]),
+        // Auto-allows workspace and /tmp edits; still asks for sensitive paths.
+        (
+            GooseMode::SmartApprove,
+            vec![HERMES_MODE_ACCEPT_EDITS.to_string()],
+        ),
+        // Hermes has no plan mode; fail closed to ask-before-edits.
+        (GooseMode::Chat, vec![HERMES_MODE_DEFAULT.to_string()]),
+    ])
 }
 
 fn resolve_hermes_acp_launch_with(
@@ -99,6 +118,7 @@ impl HermesAcpProvider {
                 vec![("model".to_string(), model)]
             };
 
+            let mode_mapping = hermes_mode_mapping();
             let provider_config = AcpProviderConfig {
                 command: launch.command,
                 args: launch.args,
@@ -106,10 +126,10 @@ impl HermesAcpProvider {
                 env_remove: vec![],
                 work_dir: working_dir,
                 mcp_servers: extension_configs_to_mcp_servers(&extensions),
-                session_mode_id: None,
+                session_mode_id: mode_mapping[&goose_mode].first().cloned(),
                 session_config_options,
                 model_config_option_id: Some("model".to_string()),
-                mode_mapping: HashMap::new(),
+                mode_mapping,
                 notification_callback: None,
             };
 
@@ -200,5 +220,52 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains(HERMES_ACP_BINARY), "{message}");
         assert!(message.contains(HERMES_BINARY), "{message}");
+    }
+
+    #[test]
+    fn maps_goose_modes_to_advertised_hermes_session_modes() {
+        let mapping = hermes_mode_mapping();
+        assert_eq!(mapping[&GooseMode::Auto], vec![HERMES_MODE_DONT_ASK]);
+        assert_eq!(mapping[&GooseMode::Approve], vec![HERMES_MODE_DEFAULT]);
+        assert_eq!(
+            mapping[&GooseMode::SmartApprove],
+            vec![HERMES_MODE_ACCEPT_EDITS]
+        );
+        assert_eq!(mapping[&GooseMode::Chat], vec![HERMES_MODE_DEFAULT]);
+
+        let advertised = [
+            HERMES_MODE_DEFAULT,
+            HERMES_MODE_ACCEPT_EDITS,
+            HERMES_MODE_DONT_ASK,
+        ];
+        for ids in mapping.values() {
+            assert!(!ids.is_empty());
+            assert!(
+                ids.iter().all(|id| advertised.contains(&id.as_str())),
+                "unexpected Hermes mode id in {ids:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn session_mode_id_follows_mapped_goose_mode() {
+        let mapping = hermes_mode_mapping();
+        let session_mode_id = |mode| mapping[&mode].first().cloned();
+        assert_eq!(
+            session_mode_id(GooseMode::Auto).as_deref(),
+            Some(HERMES_MODE_DONT_ASK)
+        );
+        assert_eq!(
+            session_mode_id(GooseMode::Approve).as_deref(),
+            Some(HERMES_MODE_DEFAULT)
+        );
+        assert_eq!(
+            session_mode_id(GooseMode::SmartApprove).as_deref(),
+            Some(HERMES_MODE_ACCEPT_EDITS)
+        );
+        assert_eq!(
+            session_mode_id(GooseMode::Chat).as_deref(),
+            Some(HERMES_MODE_DEFAULT)
+        );
     }
 }
