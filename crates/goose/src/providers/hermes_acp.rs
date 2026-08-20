@@ -20,6 +20,7 @@ const HERMES_ACP_DOC_URL: &str =
 pub(crate) const HERMES_ACP_BINARY: &str = "hermes-acp";
 pub(crate) const HERMES_BINARY: &str = "hermes";
 
+#[derive(Debug)]
 pub(crate) struct HermesAcpLaunch {
     pub command: PathBuf,
     pub args: Vec<String>,
