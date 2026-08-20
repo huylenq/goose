@@ -50,6 +50,14 @@ Use goose with ChatGPT Plus/Pro or OpenAI API credits via the [codex-acp](https:
 - Active ChatGPT Plus/Pro subscription or OpenAI API credits
 - Authenticated with your OpenAI account (`codex` CLI working)
 
+### Hermes ACP
+
+Use goose with [Hermes Agent](https://github.com/NousResearch/hermes-agent) via ACP over stdio. goose looks up `hermes-acp` on PATH first, then `hermes` with args `["acp"]`. goose does not install Hermes or modify `~/.hermes`.
+
+**Requirements:**
+- Hermes already installed with the ACP extra so `hermes-acp` or `hermes acp` works
+- Hermes provider credentials configured (`hermes model`)
+
 ### Pi ACP
 
 Wraps `pi-acp`, an ACP adapter for Pi. Uses your existing Pi installation.
@@ -179,6 +187,30 @@ Wraps `pi-acp`, an ACP adapter for Pi. Uses your existing Pi installation.
 
 Replacing the npm package does not change `~/.codex` or require recreating your goose configuration. goose does not replace the package automatically.
 
+### Hermes ACP
+
+1. **Use an existing Hermes install**
+
+   goose does not install Hermes. Confirm one of these launchers is on your PATH:
+
+   ```bash
+   command -v hermes-acp || command -v hermes
+   hermes acp --check
+   ```
+
+2. **Authenticate Hermes if needed**
+
+   Run `hermes model` (or Hermes' own setup). goose does not modify `~/.hermes`.
+
+3. **Configure goose**
+
+   Set the provider environment variable:
+   ```bash
+   export GOOSE_PROVIDER=hermes-acp
+   ```
+
+   Or configure through the goose CLI using `goose configure`.
+
 ### Pi ACP
 
 1. **Install the Pi CLI and ACP adapter**
@@ -277,6 +309,18 @@ Codex ACP reports its available models dynamically. Keep `current` to use Codex'
 
 See [codex-acp](https://github.com/agentclientprotocol/codex-acp) for session mode details.
 
+### Hermes ACP Configuration
+
+| Environment Variable | Description         | Default   |
+|----------------------|---------------------|-----------|
+| `GOOSE_PROVIDER`     | Set to `hermes-acp` | None      |
+| `GOOSE_MODEL`        | Model to use        | `current` |
+| `GOOSE_MODE`         | Permission mode     | `auto`    |
+
+Hermes ACP reports available models dynamically from the providers you have authenticated in Hermes. Keep `current` to use Hermes' default, or select a discovered model explicitly.
+
+goose does not install Hermes and does not modify `~/.hermes`.
+
 ### Pi ACP Configuration
 
 | Environment Variable | Description      | Default   |
@@ -289,7 +333,7 @@ See [codex-acp](https://github.com/agentclientprotocol/codex-acp) for session mo
 
 ACP providers depend on external binaries, so ensure:
 
-- The ACP agent binary is installed and in your PATH (`amp-acp`, `claude-agent-acp`, `codex-acp`, `pi-acp`, or `copilot`)
+- The ACP agent binary is installed and in your PATH (`amp-acp`, `claude-agent-acp`, `codex-acp`, `hermes-acp` or `hermes`, `pi-acp`, or `copilot`)
 - The underlying CLI tool is authenticated and working
 - Subscription limits are not exceeded
 - Node.js and npm are installed (for npm-distributed adapters)

@@ -920,6 +920,19 @@ async fn test_copilot_acp_provider() -> Result<()> {
         .await
 }
 
+// Requires an existing Hermes install with ACP support (`hermes-acp` or `hermes acp`)
+#[tokio::test]
+async fn test_hermes_acp_provider() -> Result<()> {
+    let binary = if which::which("hermes-acp").is_ok() {
+        "hermes-acp"
+    } else {
+        "hermes"
+    };
+    ProviderTestConfig::with_agentic_provider("hermes-acp", ACP_CURRENT_MODEL, binary)
+        .run()
+        .await
+}
+
 #[dtor::dtor(unsafe)]
 fn print_test_report() {
     TEST_REPORT.print_summary();

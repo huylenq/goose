@@ -45,6 +45,7 @@ pub mod google_def;
 pub mod http_status {
     pub use goose_providers::http_status::*;
 }
+pub mod hermes_acp;
 pub mod huggingface;
 pub mod huggingface_auth;
 mod init;

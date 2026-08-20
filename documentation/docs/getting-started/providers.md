@@ -82,6 +82,7 @@ goose supports [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) a
 |-----------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [Claude ACP](https://github.com/agentclientprotocol/claude-agent-acp) (`claude-acp`) | Uses Claude Code via ACP. Passes goose extensions to the agent as MCP servers. | `npm install -g @agentclientprotocol/claude-agent-acp`, active Claude Code subscription |
 | [Codex ACP](https://github.com/agentclientprotocol/codex-acp) (`codex-acp`) | Uses OpenAI Codex via ACP. Passes goose extensions to the agent as MCP servers. | `npm install -g @agentclientprotocol/codex-acp`, active ChatGPT Plus/Pro subscription or OpenAI API credits |
+| [Hermes ACP](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/acp.md) (`hermes-acp`) | Uses Hermes Agent via ACP over stdio. Passes goose extensions to the agent as MCP servers. | Existing Hermes install with `hermes-acp` or `hermes acp` on PATH. goose does not install Hermes. |
 
 :::tip ACP Providers
 See the [ACP Providers guide](/docs/guides/acp-providers) for detailed setup instructions.
