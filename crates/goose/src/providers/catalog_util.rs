@@ -81,6 +81,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn hermes_acp_is_registered_as_agent_acp_provider() {
+        let entry = crate::providers::get_from_registry("hermes-acp")
+            .await
+            .expect("hermes-acp should be registered");
+        let metadata = entry.metadata();
+        assert_eq!(metadata.name, "hermes-acp");
+        assert_eq!(metadata.display_name, "Hermes ACP");
+        assert_eq!(metadata.default_model, crate::acp::ACP_CURRENT_MODEL);
+
+        let setup = metadata
+            .setup
+            .as_ref()
+            .expect("hermes-acp should expose setup metadata");
+        assert_eq!(setup.category, ProviderSetupCategory::Agent);
+        assert!(setup.acp);
+        assert!(!setup.setup_capabilities.install);
+    }
+
+    #[tokio::test]
     async fn groq_uses_its_canonical_display_name() {
         let groq = crate::providers::get_from_registry("groq").await.unwrap();
         assert_eq!(groq.metadata().display_name, "Groq");
@@ -112,6 +131,15 @@ mod tests {
             .expect("setup catalog should include claude-acp");
         assert_eq!(claude.category, ProviderSetupCategory::Agent);
         assert!(claude.acp);
+
+        let hermes = entries
+            .iter()
+            .find(|entry| entry.provider_id == "hermes-acp")
+            .expect("setup catalog should include hermes-acp");
+        assert_eq!(hermes.category, ProviderSetupCategory::Agent);
+        assert!(hermes.acp);
+        assert_eq!(hermes.binary_name.as_deref(), Some("hermes-acp"));
+        assert!(!hermes.setup_capabilities.install);
 
         let ollama = entries
             .iter()
@@ -182,7 +210,7 @@ mod tests {
             .map(|entry| entry.provider_id)
             .collect::<std::collections::HashSet<_>>();
 
-        for provider_id in ["goose", "claude-acp", "openai"] {
+        for provider_id in ["goose", "claude-acp", "hermes-acp", "openai"] {
             assert!(provider_ids.contains(provider_id), "missing {provider_id}");
         }
 

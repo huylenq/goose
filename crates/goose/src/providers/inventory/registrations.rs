@@ -13,6 +13,7 @@ use crate::providers::copilot_acp::{COPILOT_ACP_BINARY, COPILOT_ACP_PROVIDER_NAM
 use crate::providers::formats::anthropic::ANTHROPIC_PROVIDER_NAME;
 use crate::providers::gemini_oauth::TokenCache as GeminiOAuthTokenCache;
 use crate::providers::google::{GOOGLE_API_HOST, GOOGLE_PROVIDER_NAME};
+use crate::providers::hermes_acp::{resolve_hermes_acp_launch, HERMES_ACP_PROVIDER_NAME};
 use crate::providers::huggingface::HuggingFaceProvider;
 use crate::providers::huggingface_auth;
 use crate::providers::kimicode;
@@ -257,6 +258,17 @@ pub fn copilot_acp_inventory() -> InventoryRegistration {
 
 pub fn pi_acp_inventory() -> InventoryRegistration {
     acp_inventory(PI_ACP_PROVIDER_NAME, PI_ACP_BINARY, true)
+}
+
+pub fn hermes_acp_inventory() -> InventoryRegistration {
+    InventoryRegistration::new(true, || {
+        let launch = resolve_hermes_acp_launch()?;
+        Ok(
+            InventoryIdentityInput::new(HERMES_ACP_PROVIDER_NAME, HERMES_ACP_PROVIDER_NAME)
+                .with_public("command", launch.command.display().to_string()),
+        )
+    })
+    .with_configured(|| resolve_hermes_acp_launch().is_ok())
 }
 
 #[cfg(test)]

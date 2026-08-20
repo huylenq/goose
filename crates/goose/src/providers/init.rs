@@ -23,6 +23,7 @@ use super::{
     gemini_cli::GeminiCliProvider,
     gemini_oauth::GeminiOAuthProvider,
     githubcopilot::GithubCopilotProvider,
+    hermes_acp::HermesAcpProvider,
     huggingface::HuggingFaceProvider,
     kimicode::KimiCodeProvider,
     litellm::LiteLLMProvider,
@@ -128,6 +129,10 @@ async fn init_registry() -> RwLock<ProviderRegistry> {
         registry.register_with_inventory::<HuggingFaceProvider>(
             true,
             Some(registrations::huggingface_inventory()),
+        );
+        registry.register_with_inventory::<HermesAcpProvider>(
+            false,
+            Some(registrations::hermes_acp_inventory()),
         );
         registry.register_with_inventory::<KimiCodeProvider>(
             true,

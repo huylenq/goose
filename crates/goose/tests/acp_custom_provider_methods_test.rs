@@ -94,6 +94,7 @@ fn acp_catalog_and_custom_provider_methods_use_core_provider_store() {
             "amp-acp",
             "cursor-agent",
             "pi-acp",
+            "hermes-acp",
         ] {
             assert!(
                 setup_providers
