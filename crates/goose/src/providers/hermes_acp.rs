@@ -73,9 +73,23 @@ fn hermes_mode_mapping() -> HashMap<GooseMode, Vec<String>> {
             GooseMode::SmartApprove,
             vec![HERMES_MODE_ACCEPT_EDITS.to_string()],
         ),
-        // Hermes has no plan mode; fail closed to ask-before-edits.
-        (GooseMode::Chat, vec![HERMES_MODE_DEFAULT.to_string()]),
     ])
+}
+
+fn hermes_session_config(
+    goose_mode: GooseMode,
+) -> Result<(HashMap<GooseMode, Vec<String>>, String)> {
+    if goose_mode == GooseMode::Chat {
+        anyhow::bail!(
+            "hermes-acp has no read-only or plan session mode; refusing Chat so a writable Hermes session is not started"
+        );
+    }
+    let mode_mapping = hermes_mode_mapping();
+    let session_mode_id = mode_mapping
+        .get(&goose_mode)
+        .and_then(|ids| ids.first().cloned())
+        .ok_or_else(|| anyhow::anyhow!("hermes-acp has no session mode for {goose_mode:?}"))?;
+    Ok((mode_mapping, session_mode_id))
 }
 
 fn resolve_hermes_acp_launch_with(
@@ -104,8 +118,9 @@ impl HermesAcpProvider {
     ) -> BoxFuture<'static, Result<AcpProvider>> {
         Box::pin(async move {
             let config = Config::global();
-            let launch = resolve_hermes_acp_launch()?;
             let goose_mode = config.get_goose_mode().unwrap_or(GooseMode::Auto);
+            let (mode_mapping, session_mode_id) = hermes_session_config(goose_mode)?;
+            let launch = resolve_hermes_acp_launch()?;
             let model = if use_default_model {
                 ACP_CURRENT_MODEL.to_string()
             } else {
@@ -118,7 +133,6 @@ impl HermesAcpProvider {
                 vec![("model".to_string(), model)]
             };
 
-            let mode_mapping = hermes_mode_mapping();
             let provider_config = AcpProviderConfig {
                 command: launch.command,
                 args: launch.args,
@@ -126,7 +140,7 @@ impl HermesAcpProvider {
                 env_remove: vec![],
                 work_dir: working_dir,
                 mcp_servers: extension_configs_to_mcp_servers(&extensions),
-                session_mode_id: mode_mapping[&goose_mode].first().cloned(),
+                session_mode_id: Some(session_mode_id),
                 session_config_options,
                 model_config_option_id: Some("model".to_string()),
                 mode_mapping,
@@ -225,13 +239,13 @@ mod tests {
     #[test]
     fn maps_goose_modes_to_advertised_hermes_session_modes() {
         let mapping = hermes_mode_mapping();
+        assert!(!mapping.contains_key(&GooseMode::Chat));
         assert_eq!(mapping[&GooseMode::Auto], vec![HERMES_MODE_DONT_ASK]);
         assert_eq!(mapping[&GooseMode::Approve], vec![HERMES_MODE_DEFAULT]);
         assert_eq!(
             mapping[&GooseMode::SmartApprove],
             vec![HERMES_MODE_ACCEPT_EDITS]
         );
-        assert_eq!(mapping[&GooseMode::Chat], vec![HERMES_MODE_DEFAULT]);
 
         let advertised = [
             HERMES_MODE_DEFAULT,
@@ -249,23 +263,28 @@ mod tests {
 
     #[test]
     fn session_mode_id_follows_mapped_goose_mode() {
-        let mapping = hermes_mode_mapping();
-        let session_mode_id = |mode| mapping[&mode].first().cloned();
+        let session_mode_id = |mode| {
+            hermes_session_config(mode)
+                .map(|(_, session_mode_id)| session_mode_id)
+                .unwrap()
+        };
+        assert_eq!(session_mode_id(GooseMode::Auto), HERMES_MODE_DONT_ASK);
+        assert_eq!(session_mode_id(GooseMode::Approve), HERMES_MODE_DEFAULT);
         assert_eq!(
-            session_mode_id(GooseMode::Auto).as_deref(),
-            Some(HERMES_MODE_DONT_ASK)
+            session_mode_id(GooseMode::SmartApprove),
+            HERMES_MODE_ACCEPT_EDITS
         );
-        assert_eq!(
-            session_mode_id(GooseMode::Approve).as_deref(),
-            Some(HERMES_MODE_DEFAULT)
+    }
+
+    #[test]
+    fn refuses_chat_because_hermes_has_no_read_only_mode() {
+        let error = hermes_session_config(GooseMode::Chat).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("hermes-acp"), "{message}");
+        assert!(
+            message.contains("read-only") || message.contains("plan"),
+            "{message}"
         );
-        assert_eq!(
-            session_mode_id(GooseMode::SmartApprove).as_deref(),
-            Some(HERMES_MODE_ACCEPT_EDITS)
-        );
-        assert_eq!(
-            session_mode_id(GooseMode::Chat).as_deref(),
-            Some(HERMES_MODE_DEFAULT)
-        );
+        assert!(message.contains("Chat"), "{message}");
     }
 }

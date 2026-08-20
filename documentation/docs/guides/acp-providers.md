@@ -326,7 +326,7 @@ Hermes ACP reports available models dynamically from the providers you have auth
 | `auto`          | `dont_ask`      | Auto-allows file edits for this session except sensitive paths        |
 | `smart-approve` | `accept_edits`  | Auto-allows workspace and `/tmp` edits; still asks for sensitive paths |
 | `approve`       | `default`       | Asks before edits                                                     |
-| `chat`          | `default`       | Hermes has no plan mode; fail closed to ask-before-edits              |
+| `chat`          | refused         | Hermes has no read-only or plan mode; goose does not start a writable session |
 
 goose does not install Hermes and does not modify `~/.hermes`.
 
