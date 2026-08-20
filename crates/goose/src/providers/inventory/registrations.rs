@@ -13,6 +13,9 @@ use crate::providers::copilot_acp::{COPILOT_ACP_BINARY, COPILOT_ACP_PROVIDER_NAM
 use crate::providers::formats::anthropic::ANTHROPIC_PROVIDER_NAME;
 use crate::providers::gemini_oauth::TokenCache as GeminiOAuthTokenCache;
 use crate::providers::google::{GOOGLE_API_HOST, GOOGLE_PROVIDER_NAME};
+use crate::providers::hermes_acp::{
+    HERMES_ACP_BINARY, HERMES_ACP_FALLBACK_BINARY, HERMES_ACP_PROVIDER_NAME,
+};
 use crate::providers::huggingface::HuggingFaceProvider;
 use crate::providers::huggingface_auth;
 use crate::providers::kimicode;
@@ -257,6 +260,21 @@ pub fn copilot_acp_inventory() -> InventoryRegistration {
 
 pub fn pi_acp_inventory() -> InventoryRegistration {
     acp_inventory(PI_ACP_PROVIDER_NAME, PI_ACP_BINARY, true)
+}
+
+pub fn hermes_acp_inventory() -> InventoryRegistration {
+    InventoryRegistration::new(true, || {
+        let resolved_command = resolved_acp_command(HERMES_ACP_BINARY)
+            .or_else(|_| resolved_acp_command(HERMES_ACP_FALLBACK_BINARY))?;
+        Ok(
+            InventoryIdentityInput::new(HERMES_ACP_PROVIDER_NAME, HERMES_ACP_PROVIDER_NAME)
+                .with_public("command", resolved_command.display().to_string()),
+        )
+    })
+    .with_configured(|| {
+        acp_adapter_installed(HERMES_ACP_BINARY)
+            || acp_adapter_installed(HERMES_ACP_FALLBACK_BINARY)
+    })
 }
 
 #[cfg(test)]
